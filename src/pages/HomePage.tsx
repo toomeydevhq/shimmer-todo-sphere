@@ -6,6 +6,7 @@ import { TodoList } from "@/components/TodoList";
 import { TodoFilters } from "@/components/TodoFilters";
 import { TodoStats } from "@/components/TodoStats";
 import { SearchBar } from "@/components/SearchBar";
+import { PWABanner } from "@/components/PWABanner";
 import { EmptyState } from "@/components/EmptyState";
 import { Todo, TodoFilter } from "@/types/todo";
 import { Button } from "@/components/ui/button";
@@ -106,6 +107,9 @@ export const HomePage = () => {
 
   return (
     <div className="space-y-6">
+      {/* PWA Banner */}
+      <PWABanner />
+      
       {/* Hero Section */}
       <div className="text-center">
         <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">

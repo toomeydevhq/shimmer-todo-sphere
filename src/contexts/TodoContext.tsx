@@ -3,6 +3,7 @@ import { Todo, TodoPriority, TodoCategory } from "@/types/todo";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "./SettingsContext";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { offlineStorage } from "@/utils/offline";
 
 interface TodoContextType {
   todos: Todo[];
@@ -51,7 +52,13 @@ export const TodoProvider = ({ children }: { children: React.ReactNode }) => {
       id: crypto.randomUUID(),
       createdAt: new Date(),
     };
+    
     setTodos(prev => [newTodo, ...prev]);
+    
+    // Handle offline storage
+    if (!offlineStorage.isOnline()) {
+      offlineStorage.addOfflineTodo('create', newTodo);
+    }
     
     toast({
       title: "Task added",
@@ -64,6 +71,11 @@ export const TodoProvider = ({ children }: { children: React.ReactNode }) => {
       todo.id === id ? { ...todo, ...updates } : todo
     ));
     
+    // Handle offline storage
+    if (!offlineStorage.isOnline()) {
+      offlineStorage.addOfflineTodo('update', { id, updates });
+    }
+    
     toast({
       title: "Task updated",
       description: "Your task has been updated successfully.",
@@ -72,6 +84,11 @@ export const TodoProvider = ({ children }: { children: React.ReactNode }) => {
 
   const deleteTodo = (id: string) => {
     setTodos(prev => prev.filter(todo => todo.id !== id));
+    
+    // Handle offline storage
+    if (!offlineStorage.isOnline()) {
+      offlineStorage.addOfflineTodo('delete', { id });
+    }
     
     toast({
       title: "Task deleted",
