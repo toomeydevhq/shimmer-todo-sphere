@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { Todo, TodoPriority, TodoCategory } from "@/types/todo";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "./SettingsContext";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 interface TodoContextType {
   todos: Todo[];
@@ -17,56 +18,32 @@ interface TodoContextType {
 const TodoContext = createContext<TodoContextType | undefined>(undefined);
 
 export const TodoProvider = ({ children }: { children: React.ReactNode }) => {
-  const [todos, setTodos] = useState<Todo[]>([]);
+  const [todos, setTodos, isLoaded] = useLocalStorage<Todo[]>("todos", []);
   const { toast } = useToast();
   const { settings } = useSettings();
 
-  // Load todos from localStorage on mount
-  useEffect(() => {
-    const savedTodos = localStorage.getItem("todos");
-    if (savedTodos) {
-      try {
-        const parsed = JSON.parse(savedTodos);
-        // Convert date strings back to Date objects
-        const todosWithDates = parsed.map((todo: any) => ({
-          ...todo,
-          createdAt: new Date(todo.createdAt),
-          dueDate: todo.dueDate ? new Date(todo.dueDate) : undefined,
-        }));
-        setTodos(todosWithDates);
-      } catch (error) {
-        console.error("Failed to parse todos:", error);
-      }
-    }
-  }, []);
-
-  // Save todos to localStorage whenever todos change
-  useEffect(() => {
-    localStorage.setItem("todos", JSON.stringify(todos));
-  }, [todos]);
-
   // Auto-delete completed tasks based on settings
   useEffect(() => {
-    if (settings.autoDeleteCompleted && settings.autoDeleteDays > 0) {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - settings.autoDeleteDays);
+    if (!isLoaded || !settings.autoDeleteCompleted || settings.autoDeleteDays <= 0) return;
+    
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - settings.autoDeleteDays);
+    
+    setTodos(prev => {
+      const filtered = prev.filter(todo => 
+        !todo.completed || todo.createdAt > cutoffDate
+      );
       
-      setTodos(prev => {
-        const filtered = prev.filter(todo => 
-          !todo.completed || todo.createdAt > cutoffDate
-        );
-        
-        if (filtered.length < prev.length) {
-          toast({
-            title: "Auto-cleanup completed",
-            description: `Removed ${prev.length - filtered.length} old completed tasks.`,
-          });
-        }
-        
-        return filtered;
-      });
-    }
-  }, [settings.autoDeleteCompleted, settings.autoDeleteDays, toast]);
+      if (filtered.length < prev.length) {
+        toast({
+          title: "Auto-cleanup completed",
+          description: `Removed ${prev.length - filtered.length} old completed tasks.`,
+        });
+      }
+      
+      return filtered;
+    });
+  }, [isLoaded, settings.autoDeleteCompleted, settings.autoDeleteDays, setTodos, toast]);
 
   const addTodo = (todo: Omit<Todo, "id" | "createdAt">) => {
     const newTodo: Todo = {

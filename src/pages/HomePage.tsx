@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useTodos } from "@/contexts/TodoContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { TodoForm } from "@/components/TodoForm";
@@ -6,14 +6,16 @@ import { TodoList } from "@/components/TodoList";
 import { TodoFilters } from "@/components/TodoFilters";
 import { TodoStats } from "@/components/TodoStats";
 import { SearchBar } from "@/components/SearchBar";
+import { EmptyState } from "@/components/EmptyState";
 import { Todo, TodoFilter } from "@/types/todo";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, Download, Upload } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export const HomePage = () => {
   const { todos, toggleComplete, deleteTodo, clearCompleted, importTodos, exportTodos } = useTodos();
   const { settings } = useSettings();
+  const { toast } = useToast();
   const [filter, setFilter] = useState<TodoFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -42,52 +44,65 @@ export const HomePage = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string);
-        if (Array.isArray(data)) {
-          const importedTodos = data.map((todo: any) => ({
-            ...todo,
-            id: crypto.randomUUID(), // Generate new IDs to avoid conflicts
-            createdAt: new Date(todo.createdAt),
-            dueDate: todo.dueDate ? new Date(todo.dueDate) : undefined,
-          }));
-          importTodos(importedTodos);
-        }
-      } catch (error) {
-        console.error("Failed to import todos:", error);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid file format: Expected an array of todos");
       }
-    };
-    reader.readAsText(file);
+
+      const importedTodos = data.map((todo: any) => ({
+        ...todo,
+        id: crypto.randomUUID(), // Generate new IDs to avoid conflicts
+        createdAt: new Date(todo.createdAt),
+        dueDate: todo.dueDate ? new Date(todo.dueDate) : undefined,
+      }));
+      
+      importTodos(importedTodos);
+      toast({
+        title: "Import successful",
+        description: `Imported ${importedTodos.length} tasks successfully.`,
+      });
+    } catch (error) {
+      console.error("Failed to import todos:", error);
+      toast({
+        title: "Import failed",
+        description: "Failed to import tasks. Please check the file format.",
+        variant: "destructive",
+      });
+    }
+    
     event.target.value = ""; // Reset input
   };
 
-  // Filter todos based on current filter and search query
-  const filteredTodos = todos.filter(todo => {
-    // Apply completed task visibility setting
-    if (!settings.showCompletedTasks && todo.completed) return false;
-    
-    // Apply filter
-    if (filter === "active" && todo.completed) return false;
-    if (filter === "completed" && !todo.completed) return false;
-    
-    // Apply search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        todo.title.toLowerCase().includes(query) ||
-        todo.description?.toLowerCase().includes(query) ||
-        todo.category.toLowerCase().includes(query)
-      );
-    }
-    
-    return true;
-  });
+  // Optimized filtering with useMemo for better performance
+  const filteredTodos = useMemo(() => {
+    return todos.filter(todo => {
+      // Apply completed task visibility setting
+      if (!settings.showCompletedTasks && todo.completed) return false;
+      
+      // Apply filter
+      if (filter === "active" && todo.completed) return false;
+      if (filter === "completed" && !todo.completed) return false;
+      
+      // Apply search
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          todo.title.toLowerCase().includes(query) ||
+          todo.description?.toLowerCase().includes(query) ||
+          todo.category.toLowerCase().includes(query)
+        );
+      }
+      
+      return true;
+    });
+  }, [todos, settings.showCompletedTasks, filter, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -179,28 +194,24 @@ export const HomePage = () => {
           onEdit={handleEdit}
         />
       ) : (
-        <Card>
-          <CardContent className="text-center py-12">
-            <div className="text-6xl mb-4">
-              {searchQuery ? "🔍" : filter === "completed" ? "✅" : "📝"}
-            </div>
-            <h3 className="text-lg font-medium mb-2">
-              {searchQuery ? "No tasks found" : 
-               filter === "completed" ? "No completed tasks" :
-               filter === "active" ? "No active tasks" : "No tasks yet"}
-            </h3>
-            <p className="text-muted-foreground">
-              {searchQuery 
-                ? "Try adjusting your search query"
-                : filter === "completed" 
-                ? "Complete some tasks to see them here"
-                : filter === "active"
-                ? "All your tasks are completed!"
-                : "Click the Quick Add button to create your first task"
-              }
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={searchQuery ? "🔍" : filter === "completed" ? "✅" : "📝"}
+          title={searchQuery ? "No tasks found" : 
+                 filter === "completed" ? "No completed tasks" :
+                 filter === "active" ? "No active tasks" : "No tasks yet"}
+          description={searchQuery 
+            ? "Try adjusting your search query"
+            : filter === "completed" 
+            ? "Complete some tasks to see them here"
+            : filter === "active"
+            ? "All your tasks are completed!"
+            : "Click the Quick Add button to create your first task"
+          }
+          action={!searchQuery && filter === "all" ? {
+            label: "Add Your First Task",
+            onClick: () => setShowForm(true)
+          } : undefined}
+        />
       )}
     </div>
   );
